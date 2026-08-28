@@ -1,0 +1,193 @@
+{
+  "name": "My First Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "File Upload",
+        "formDescription": "upload Student Form",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "File upload",
+              "fieldType": "file"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.6,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8f1f788c-4918-4a30-86b2-50b3b258ecdb",
+      "name": "On form submission",
+      "webhookId": "cb39e2e8-166c-45b5-a3a1-c5a2be821b60"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "File_upload",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "2df150bd-fccc-4478-8bde-91a2ba72f662",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Clean this student enrollment row and return ONLY a JSON object.\nRow data: {{ JSON.stringify($json) }}\nRules:\n- Name: Title Case\n- Email: if invalid (no @ or no .com/.in) set INVALID_EMAIL\n- Phone: if less than 10 digits or empty set MISSING\n- Course: only Python or Machine Learning or Data Science\n- Fee_Paid: yes/YES = true, no/NO = false\n- City: Title Case, empty = UNKNOWN\n- Enrolled_Date: YYYY-MM-DD format\nReturn ONLY raw JSON. No explanation. No markdown.",
+        "messages": {
+          "messageValues": []
+        },
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [
+        448,
+        0
+      ],
+      "id": "ecb290b2-aa9a-4ebd-af65-488d7839b34f",
+      "name": "Basic LLM Chain",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        336,
+        208
+      ],
+      "id": "931631e4-9ccb-4cad-9873-60acbaa22b9a",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "P0N5VoBzrYS5q8eX",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const output = [];\n\nfor (const item of $input.all()) {\n  let data = item.json;\n\n  try {\n    // If AI output is inside a string, parse it\n    if (typeof data === 'string') {\n      data = JSON.parse(data);\n    }\n\n    // Handle common AI output fields\n    if (typeof data.output === 'string') {\n      data = JSON.parse(data.output);\n    }\n\n    if (typeof data.text === 'string') {\n      data = JSON.parse(data.text);\n    }\n\n    // Clean the record\n    const cleaned = {\n      Student_ID: String(data.Student_ID ?? '').trim(),\n      Name: String(data.Name ?? '').trim(),\n      Email: String(data.Email ?? '').trim().toLowerCase(),\n      Phone: String(data.Phone ?? '').trim(),\n      Course: String(data.Course ?? '').trim(),\n      Fee_Paid: Boolean(data.Fee_Paid),\n      City: String(data.City ?? '').trim(),\n      Enrolled_Date: String(data.Enrolled_Date ?? '').trim(),\n    };\n\n    // Email validation\n    const emailRegex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/;\n    const emailValid = emailRegex.test(cleaned.Email);\n\n    // Phone validation\n    const phoneDigits = cleaned.Phone.replace(/\\D/g, '');\n    const phoneValid = /^[0-9]{10}$/.test(phoneDigits);\n\n    // Date validation\n    const dateValid = /^\\d{4}-\\d{2}-\\d{2}$/.test(cleaned.Enrolled_Date);\n\n    // Add validation status\n    cleaned.Email = emailValid ? cleaned.Email : '';\n    cleaned.Phone = phoneValid ? phoneDigits : '';\n\n    cleaned.Email_Valid = emailValid;\n    cleaned.Phone_Valid = phoneValid;\n    cleaned.Date_Valid = dateValid;\n\n    output.push({\n      json: cleaned\n    });\n\n  } catch (error) {\n    // Keep bad records instead of stopping the entire workflow\n    output.push({\n      json: {\n        ...data,\n        Parse_Error: true,\n        Error_Message: error.message\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        0
+      ],
+      "id": "a0375805-df28-4620-849e-1d02b2ac5fe1",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "87e95a93-abcb-4e92-a872-eb3a45676f55",
+      "name": "Convert to File",
+      "alwaysOutputData": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "On form submission": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "timezone": "Asia/Kolkata",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "executionTimeout": -1
+  },
+  "versionId": "d8994840-b7d5-45b5-856f-ac8a017fa0ba",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "17821f8f2d9f0a5873baabb5397628eb5ef23de5015a8779bd1e11bb24abb553"
+  },
+  "nodeGroups": [],
+  "id": "SXRwD93DAQDdRgfE",
+  "tags": []
+}
